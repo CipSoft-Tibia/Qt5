@@ -1,0 +1,21 @@
+// Copyright 2015 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// https://webbluetoothcg.github.io/web-bluetooth/#bluetoothcharacteristicproperties
+
+[
+    Exposed=Window,
+    RuntimeEnabled=WebBluetooth,
+    SecureContext
+] interface BluetoothCharacteristicProperties {
+    [HighEntropy=Direct, MeasureAs=BCPBroadcast] readonly attribute boolean broadcast;
+    [HighEntropy=Direct, MeasureAs=BCPRead] readonly attribute boolean read;
+    [HighEntropy=Direct, MeasureAs=BCPWriteWithoutResponse] readonly attribute boolean writeWithoutResponse;
+    [HighEntropy=Direct, MeasureAs=BCPWrite] readonly attribute boolean write;
+    [HighEntropy=Direct, MeasureAs=BCPNotify] readonly attribute boolean notify;
+    [HighEntropy=Direct, MeasureAs=BCPIndicate] readonly attribute boolean indicate;
+    [HighEntropy=Direct, MeasureAs=BCPAuthenticatedSignedWrites] readonly attribute boolean authenticatedSignedWrites;
+    [HighEntropy=Direct, MeasureAs=BCPReliableWrite] readonly attribute boolean reliableWrite;
+    [HighEntropy=Direct, MeasureAs=BCPWritableAuxiliaries] readonly attribute boolean writableAuxiliaries;
+};

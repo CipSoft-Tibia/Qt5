@@ -1,0 +1,8 @@
+{
+  "dependencies": [
+    "platform"
+  ],  "modules": [
+    "dom_extension.js",
+    "DOMExtension.js"
+  ]
+}

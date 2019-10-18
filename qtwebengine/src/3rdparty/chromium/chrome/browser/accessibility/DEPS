@@ -1,0 +1,4 @@
+include_rules = [
+  "+components/soda",
+  "+services/image_annotation",
+]

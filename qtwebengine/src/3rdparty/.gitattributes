@@ -1,0 +1,4 @@
+# Force LF checkout of the pins files to avoid transport_security_state_generator errors.
+/chromium/net/http/*.pins  text eol=lf
+.gitignore              export-ignore
+.gitattributes          export-ignore

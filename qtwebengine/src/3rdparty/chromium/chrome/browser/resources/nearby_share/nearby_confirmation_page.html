@@ -1,0 +1,80 @@
+<style>
+  #addContacts {
+    margin-top: 32px;
+  }
+
+  #addContactsLabel {
+    color: rgb(32, 33, 36);
+    line-height: 138%;
+  }
+
+  #addContactsLabelSecondary {
+    color: rgb(95, 99, 104);
+    line-height: 138%;
+  }
+
+  #confirmationToken {
+    border-top: 1px dashed rgba(151, 151, 151, 0.74);
+    color: rgba(0, 0, 0, 0.4);
+    flex-grow: 1;
+    font-size: 90%;
+    letter-spacing: 0.3px;
+    margin-inline-end: -15px;
+    margin-top: 55px;
+    padding-top: 6px;
+    text-align: center;
+    width: 200px;
+  }
+
+  nearby-preview {
+    margin-inline-end: 10px;
+    margin-inline-start: 10px;
+  }
+
+  nearby-progress {
+    margin-top: 15px;
+    width: 126px;
+  }
+
+  #centerContent {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 27px 32px 25px 37px;
+  }
+
+  #processRow {
+    display: flex;
+    margin-top: 48px;
+  }
+</style>
+
+<nearby-page-template title="$i18n{nearbyShareConfirmationPageTitle}"
+        action-button-label="[[getActionButtonLabel_(needsConfirmation_)]]"
+        action-button-event-name="accept"
+        cancel-button-label="[[getCancelButtonLabel_(needsConfirmation_)]]"
+        cancel-button-event-name="[[getCancelEventName_(needsConfirmation_)]]">
+  <div id="centerContent" slot="content">
+    <div id="processRow">
+      <nearby-preview title="[[attachmentTitle_()]]"></nearby-preview>
+      <div id="confirmationToken">
+        <template is="dom-if" if="[[confirmationToken_]]">
+          [[i18n('nearbyShareSecureConnectionId', confirmationToken_)]]
+        </template>
+      </div>
+      <nearby-progress share-target="[[shareTarget]]"></nearby-progress>
+    </div>
+
+    <template is="dom-if" if="[[contactName_(shareTarget)]]">
+      <cr-checkbox id="addContacts">
+        <div id="addContactsLabel">
+          [[contactName_(shareTarget)]]
+        </div>
+        <div id="addContactsLabelSecondary">
+          [[i18n('nearbyShareConfirmationPageAddContactSubtitle')]]
+        </div>
+      </cr-checkbox>
+    </template>
+  </div>
+</nearby-page-template>

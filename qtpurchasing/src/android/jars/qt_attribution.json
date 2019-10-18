@@ -1,0 +1,27 @@
+[
+    {
+        "Id": "billingapi",
+        "Name": "Android Billing API Library",
+        "QDocModule": "qtpurchasing",
+        "QtUsage": "Used to import billingclient.",
+        "Files": "billing_api_4.0.0.jar",
+        "Description": "Library that provides com.android.billingclient.api.*",
+        "License": "Apache License 2.0",
+        "LicenseId": "Apache-2.0",
+        "LicenseFile": "third_party_licenses.txt",
+        "Copyright": "Copyright (c) 2021 Google Inc."
+    },
+
+    {
+        "Id": "annotation",
+        "Name": "AndroidX Annotation Library",
+        "QDocModule": "qtpurchasing",
+        "QtUsage": "Used to import NonNull and Nullable.",
+        "Files": "annotation-1.2.0.jar",
+        "Description": "Androidx library that provides NonNull and Nullable.",
+        "License": "Apache License 2.0",
+        "LicenseId": "Apache-2.0",
+        "LicenseFile": "third_party_licenses.txt",
+        "Copyright": "Copyright (c) 2021 Google Inc."
+    }
+]

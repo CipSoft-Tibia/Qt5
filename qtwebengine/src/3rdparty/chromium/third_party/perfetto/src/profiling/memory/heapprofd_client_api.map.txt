@@ -1,0 +1,11 @@
+{
+  global:
+    AHeapInfo_create;
+    AHeapInfo_setCallback;
+    AHeapProfile_registerHeap;
+    AHeapProfile_initSession;
+    AHeapProfile_reportAllocation;
+    AHeapProfile_reportFree;
+  local:
+    *;
+};

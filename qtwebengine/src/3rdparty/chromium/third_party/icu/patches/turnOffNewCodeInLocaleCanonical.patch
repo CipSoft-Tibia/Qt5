@@ -1,0 +1,36 @@
+diff --git a/source/common/locid.cpp b/source/common/locid.cpp
+index 753a4521..7c01b05b 100644
+--- a/source/common/locid.cpp
++++ b/source/common/locid.cpp
+@@ -508,6 +508,7 @@ Locale::operator==( const   Locale& other) const
+ 
+ #define ISASCIIALPHA(c) (((c) >= 'a' && (c) <= 'z') || ((c) >= 'A' && (c) <= 'Z'))
+ 
++#if 0  // TURN OFF the new part of UTS35 Locale Canonicalization due to start up performance regression
+ namespace {
+ 
+ CharString& AppendLSCVE(CharString& out, const char* language, const char* script,
+@@ -537,6 +538,7 @@ CharString& AppendLSCVE(CharString& out, const char* language, const char* scrip
+ }
+ 
+ }  // namespace
++#endif
+ 
+ /*This function initializes a Locale from a C locale ID*/
+ Locale& Locale::init(const char* localeID, UBool canonicalize)
+@@ -661,6 +663,7 @@ Locale& Locale::init(const char* localeID, UBool canonicalize)
+             break;
+         }
+ 
++#if 0  // TURN OFF the new part of UTS35 Locale Canonicalization due to start up performance regression
+         if (canonicalize) {
+             UErrorCode status = U_ZERO_ERROR;
+             // TODO: Try to use ResourceDataValue and ures_getValueWithFallback() etc.
+@@ -849,6 +852,7 @@ Locale& Locale::init(const char* localeID, UBool canonicalize)
+                 }   // End of handle REGION
+             } while (0);
+         }   // if (canonicalize) {
++#endif
+ 
+         // successful end of init()
+         return *this;

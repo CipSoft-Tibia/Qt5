@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file>statemachine.scxml</file>
+    </qresource>
+</RCC>

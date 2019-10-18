@@ -1,0 +1,12 @@
+{
+  "dependencies": [
+    "test_runner",
+    "data_grid"
+  ],
+  "modules": [
+    "data_grid_test_runner.js"
+  ],
+  "skip_compilation": [
+    "data_grid_test_runner.js"
+  ]
+}

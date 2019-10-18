@@ -1,0 +1,14 @@
+{
+  "dependencies": [
+    "heap_snapshot_worker",
+    "test_runner",
+    "profiler",
+    "data_grid"
+  ],
+  "modules": [
+    "heap_profiler_test_runner.js"
+  ],
+  "skip_compilation": [
+    "heap_profiler_test_runner.js"
+  ]
+}

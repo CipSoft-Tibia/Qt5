@@ -1,0 +1,89 @@
+diff --git a/source/i18n/number_grouping.cpp b/source/i18n/number_grouping.cpp
+index 41f727a4..6b1642cf 100644
+--- a/source/i18n/number_grouping.cpp
++++ b/source/i18n/number_grouping.cpp
+@@ -64,6 +64,13 @@ Grouper Grouper::forProperties(const DecimalFormatProperties& properties) {
+ }
+ 
+ void Grouper::setLocaleData(const impl::ParsedPatternInfo &patternInfo, const Locale& locale) {
++    if (fMinGrouping == -2) {
++        fMinGrouping = getMinGroupingForLocale(locale);
++    } else if (fMinGrouping == -3) {
++        fMinGrouping = static_cast<int16_t>(uprv_max(2, getMinGroupingForLocale(locale)));
++    } else {
++        // leave fMinGrouping alone
++    }
+     if (fGrouping1 != -2 && fGrouping2 != -4) {
+         return;
+     }
+@@ -76,13 +83,6 @@ void Grouper::setLocaleData(const impl::ParsedPatternInfo &patternInfo, const Lo
+     if (grouping3 == -1) {
+         grouping2 = grouping1;
+     }
+-    if (fMinGrouping == -2) {
+-        fMinGrouping = getMinGroupingForLocale(locale);
+-    } else if (fMinGrouping == -3) {
+-        fMinGrouping = static_cast<int16_t>(uprv_max(2, getMinGroupingForLocale(locale)));
+-    } else {
+-        // leave fMinGrouping alone
+-    }
+     fGrouping1 = grouping1;
+     fGrouping2 = grouping2;
+ }
+diff --git a/source/i18n/unicode/decimfmt.h b/source/i18n/unicode/decimfmt.h
+index 8dba9b21..dbf6b3ae 100644
+--- a/source/i18n/unicode/decimfmt.h
++++ b/source/i18n/unicode/decimfmt.h
+@@ -1674,8 +1674,15 @@ class U_I18N_API DecimalFormat : public NumberFormat {
+     int32_t getMinimumGroupingDigits() const;
+ 
+     /**
+-     * Sets the minimum grouping digits. Setting to a value less than or
+-     * equal to 1 turns off minimum grouping digits.
++     * Sets the minimum grouping digits. Setting the value to
++     *  - 1: Turns off minimum grouping digits.
++     *  - 0 or -1: The behavior is undefined.
++     *  - UNUM_MINIMUM_GROUPING_DIGITS_AUTO: Display grouping using the default
++     *      strategy for all locales.
++     *  - UNUM_MINIMUM_GROUPING_DIGITS_MIN2: Display grouping using locale
++     *      defaults, except do not show grouping on values smaller than 10000
++     *      (such that there is a minimum of two digits before the first
++     *      separator).
+      *
+      * For more control over grouping strategies, use NumberFormatter.
+      *
+diff --git a/source/i18n/unicode/unum.h b/source/i18n/unicode/unum.h
+index 9036f957..3263bb4b 100644
+--- a/source/i18n/unicode/unum.h
++++ b/source/i18n/unicode/unum.h
+@@ -392,6 +392,30 @@ typedef enum UNumberFormatFields {
+ } UNumberFormatFields;
+ 
+ 
++#ifndef U_HIDE_DRAFT_API
++/**
++ * Selectors with special numeric values to use locale default minimum grouping
++ * digits for the DecimalFormat/UNumberFormat setMinimumGroupingDigits method.
++ * Do not use these constants with the [U]NumberFormatter API.
++ *
++ * @draft ICU 68
++ */
++typedef enum UNumberFormatMinimumGroupingDigits {
++    /**
++     * Display grouping using the default strategy for all locales.
++     * @draft ICU 68
++     */
++    UNUM_MINIMUM_GROUPING_DIGITS_AUTO = -2,
++    /**
++     * Display grouping using locale defaults, except do not show grouping on
++     * values smaller than 10000 (such that there is a minimum of two digits
++     * before the first separator).
++     * @draft ICU 68
++     */
++    UNUM_MINIMUM_GROUPING_DIGITS_MIN2 = -3,
++} UNumberFormatMinimumGroupingDigits;
++#endif  // U_HIDE_DRAFT_API
++
+ /**
+  * Create and return a new UNumberFormat for formatting and parsing
+  * numbers.  A UNumberFormat may be used to format numbers by calling

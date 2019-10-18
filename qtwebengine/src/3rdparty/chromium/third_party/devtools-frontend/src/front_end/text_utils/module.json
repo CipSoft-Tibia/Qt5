@@ -1,0 +1,15 @@
+{
+  "dependencies": [
+    "platform"
+  ],
+  "modules": [
+    "ContentProvider.js",
+    "StaticContentProvider.js",
+    "text_utils.js",
+    "text_utils-legacy.js",
+    "Text.js",
+    "TextCursor.js",
+    "TextUtils.js",
+    "TextRange.js"
+  ]
+}

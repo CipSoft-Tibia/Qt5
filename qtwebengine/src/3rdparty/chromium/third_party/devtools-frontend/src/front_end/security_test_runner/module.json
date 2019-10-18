@@ -1,0 +1,12 @@
+{
+  "dependencies": [
+    "test_runner",
+    "security"
+  ],
+  "modules": [
+    "security_test_runner.js"
+  ],
+  "skip_compilation": [
+    "security_test_runner.js"
+  ]
+}

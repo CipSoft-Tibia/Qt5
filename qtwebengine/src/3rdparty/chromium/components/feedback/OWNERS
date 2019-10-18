@@ -1,0 +1,8 @@
+afakhry@chromium.org
+iby@chromium.org
+mutexlox@chromium.org
+
+per-file redaction_tool*=iby@chromium.org
+per-file redaction_tool*=mutexlox@chromium.org
+
+# COMPONENT: Platform>Apps>Feedback

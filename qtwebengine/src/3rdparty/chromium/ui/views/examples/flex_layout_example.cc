@@ -1,0 +1,137 @@
+// Copyright 2018 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/views/examples/flex_layout_example.h"
+
+#include <memory>
+
+#include "base/strings/string16.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/models/combobox_model.h"
+#include "ui/gfx/geometry/insets.h"
+#include "ui/gfx/geometry/point.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/views/border.h"
+#include "ui/views/controls/button/checkbox.h"
+#include "ui/views/controls/button/md_text_button.h"
+#include "ui/views/controls/combobox/combobox.h"
+#include "ui/views/controls/label.h"
+#include "ui/views/controls/textfield/textfield.h"
+#include "ui/views/examples/example_combobox_model.h"
+#include "ui/views/layout/fill_layout.h"
+#include "ui/views/view.h"
+#include "ui/views/view_class_properties.h"
+
+namespace views {
+namespace examples {
+
+FlexLayoutExample::FlexLayoutExample() : LayoutExampleBase("Flex Layout") {}
+
+FlexLayoutExample::~FlexLayoutExample() = default;
+
+void FlexLayoutExample::ContentsChanged(Textfield* sender,
+                                        const base::string16& new_contents) {
+  layout_->SetInteriorMargin(
+      LayoutExampleBase::TextfieldsToInsets(interior_margin_));
+  layout_->SetDefault(views::kMarginsKey, LayoutExampleBase::TextfieldsToInsets(
+                                              default_child_margins_));
+  RefreshLayoutPanel(false);
+}
+
+void FlexLayoutExample::ButtonPressedImpl(Button* sender) {
+  if (sender == collapse_margins_) {
+    layout_->SetCollapseMargins(collapse_margins_->GetChecked());
+  } else if (sender == ignore_default_main_axis_margins_) {
+    layout_->SetIgnoreDefaultMainAxisMargins(
+        ignore_default_main_axis_margins_->GetChecked());
+  }
+  RefreshLayoutPanel(false);
+}
+
+void FlexLayoutExample::CreateAdditionalControls() {
+  constexpr const char* kOrientationValues[2] = {"Horizontal", "Vertical"};
+  orientation_ = CreateAndAddCombobox(
+      base::ASCIIToUTF16("Orientation"), kOrientationValues,
+      base::size(kOrientationValues),
+      base::BindRepeating(&FlexLayoutExample::OrientationChanged,
+                          base::Unretained(this)));
+
+  constexpr const char* kMainAxisValues[3] = {"Start", "Center", "End"};
+  main_axis_alignment_ = CreateAndAddCombobox(
+      base::ASCIIToUTF16("Main axis"), kMainAxisValues,
+      base::size(kMainAxisValues),
+      base::BindRepeating(&FlexLayoutExample::MainAxisAlignmentChanged,
+                          base::Unretained(this)));
+
+  constexpr const char* kCrossAxisValues[4] = {"Stretch", "Start", "Center",
+                                               "End"};
+  cross_axis_alignment_ = CreateAndAddCombobox(
+      base::ASCIIToUTF16("Cross axis"), kCrossAxisValues,
+      base::size(kCrossAxisValues),
+      base::BindRepeating(&FlexLayoutExample::CrossAxisAlignmentChanged,
+                          base::Unretained(this)));
+
+  CreateMarginsTextFields(base::ASCIIToUTF16("Interior margin"),
+                          &interior_margin_);
+
+  CreateMarginsTextFields(base::ASCIIToUTF16("Default margins"),
+                          &default_child_margins_);
+
+  collapse_margins_ =
+      CreateAndAddCheckbox(base::ASCIIToUTF16("Collapse margins"));
+
+  ignore_default_main_axis_margins_ =
+      CreateAndAddCheckbox(base::ASCIIToUTF16("Ignore main axis margins"));
+
+  layout_ = layout_panel()->SetLayoutManager(std::make_unique<FlexLayout>());
+}
+
+void FlexLayoutExample::UpdateLayoutManager() {
+  for (View* child : layout_panel()->children()) {
+    const int flex = static_cast<ChildPanel*>(child)->GetFlex();
+    if (flex < 0)
+      child->ClearProperty(views::kFlexBehaviorKey);
+    else
+      child->SetProperty(views::kFlexBehaviorKey, GetFlexSpecification(flex));
+  }
+}
+
+FlexSpecification FlexLayoutExample::GetFlexSpecification(int weight) const {
+  return weight > 0
+             ? FlexSpecification(MinimumFlexSizeRule::kScaleToZero,
+                                 MaximumFlexSizeRule::kUnbounded)
+                   .WithWeight(weight)
+             : FlexSpecification(MinimumFlexSizeRule::kPreferredSnapToZero,
+                                 MaximumFlexSizeRule::kPreferred)
+                   .WithWeight(0);
+}
+
+void FlexLayoutExample::OrientationChanged() {
+  constexpr LayoutOrientation kOrientations[2] = {
+      LayoutOrientation::kHorizontal, LayoutOrientation::kVertical};
+  layout_->SetOrientation(kOrientations[orientation_->GetSelectedIndex()]);
+  RefreshLayoutPanel(false);
+}
+
+void FlexLayoutExample::MainAxisAlignmentChanged() {
+  constexpr LayoutAlignment kMainAxisAlignments[3] = {
+      LayoutAlignment::kStart, LayoutAlignment::kCenter, LayoutAlignment::kEnd};
+  layout_->SetMainAxisAlignment(
+      kMainAxisAlignments[main_axis_alignment_->GetSelectedIndex()]);
+  RefreshLayoutPanel(false);
+}
+
+void FlexLayoutExample::CrossAxisAlignmentChanged() {
+  constexpr LayoutAlignment kCrossAxisAlignments[4] = {
+      LayoutAlignment::kStretch, LayoutAlignment::kStart,
+      LayoutAlignment::kCenter, LayoutAlignment::kEnd};
+  layout_->SetCrossAxisAlignment(
+      kCrossAxisAlignments[cross_axis_alignment_->GetSelectedIndex()]);
+  RefreshLayoutPanel(false);
+}
+
+}  // namespace examples
+}  // namespace views

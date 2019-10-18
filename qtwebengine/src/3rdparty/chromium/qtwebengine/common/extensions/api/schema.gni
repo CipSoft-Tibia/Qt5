@@ -1,0 +1,10 @@
+webengine_extensions_api_schema_files_ = [
+  "resources_private.idl",
+  "webrtc_desktop_capture_private.idl",
+]
+
+webengine_extensions_api_schema_files =
+    get_path_info(webengine_extensions_api_schema_files_, "abspath")
+
+webengine_extensions_api_root_namespace = "extensions::api::%(namespace)s"
+

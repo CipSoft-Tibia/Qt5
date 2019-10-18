@@ -1,0 +1,15 @@
+include_rules = [
+  "+base",
+  "+components/viz/common/resources/resource_format.h",
+  "+ipc",
+  "+mojo",
+  "+ui/base",
+  "+ui/latency",
+]
+
+specific_include_rules = {
+  "gpu_messages.h": [
+    "+third_party/skia/include/gpu/GrTypes.h",
+    "+third_party/skia/include/core/SkImageInfo.h",
+  ],
+}
