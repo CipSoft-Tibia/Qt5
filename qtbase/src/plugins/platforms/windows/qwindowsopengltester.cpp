@@ -316,12 +316,6 @@ QWindowsOpenGLTester::Renderers QWindowsOpenGLTester::detectSupportedRenderers(c
         | QWindowsOpenGLTester::AngleRendererD3d11Warp
         | QWindowsOpenGLTester::SoftwareRasterizer);
 
-    // Don't test for GL if explicitly requested or GLES only is requested
-    if (requested == DesktopGl
-        || ((requested & GlesMask) == 0 && testDesktopGL())) {
-            result |= QWindowsOpenGLTester::DesktopGl;
-    }
-
     const char bugListFileVar[] = "QT_OPENGL_BUGLIST";
     QString buglistFileName = QStringLiteral(":/qt-project.org/windows/openglblacklists/default.json");
 
@@ -334,10 +328,14 @@ QWindowsOpenGLTester::Renderers QWindowsOpenGLTester::detectSupportedRenderers(c
     QSet<QString> features = QOpenGLConfig::gpuFeatures(qgpu, buglistFileName);
     qCDebug(lcQpaGl) << "GPU features:" << features;
 
-    if (features.contains(QStringLiteral("disable_desktopgl"))) { // Qt-specific
+    // Don't test for GL if explicitly requested or GLES only is requested
+    // Tibia fix: Also don't test OpenGL if driver is explicitly blacklisted
+    if (!features.contains(QStringLiteral("disable_desktopgl")) &&
+        (requested == DesktopGl || ((requested & GlesMask) == 0 && testDesktopGL()))) { // Qt-specific
         qCDebug(lcQpaGl) << "Disabling Desktop GL: " << gpu;
-        result &= ~QWindowsOpenGLTester::DesktopGl;
+        result |= QWindowsOpenGLTester::DesktopGl;
     }
+
     if (features.contains(QStringLiteral("disable_angle"))) { // Qt-specific keyword
         qCDebug(lcQpaGl) << "Disabling ANGLE: " << gpu;
         result &= ~QWindowsOpenGLTester::GlesMask;
@@ -476,6 +474,7 @@ bool QWindowsOpenGLTester::testDesktopGL()
                     if (major == 1) {
                         result = false;
                         qCDebug(lcQpaGl, "OpenGL version too low");
+                        goto cleanup;
                     }
                 }
             }
@@ -512,6 +511,11 @@ cleanup:
 #else
     return false;
 #endif // !QT_NO_OPENGL
+}
+
+extern "C" int GetSupportedRenderers(int requested)
+{
+	return static_cast<int>(QWindowsOpenGLTester::supportedRenderers(static_cast<QWindowsOpenGLTester::Renderer>(requested)));
 }
 
 QT_END_NAMESPACE
