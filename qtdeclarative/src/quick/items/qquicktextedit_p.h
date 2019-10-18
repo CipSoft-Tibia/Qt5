@@ -410,6 +410,7 @@ protected:
 #endif
     QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *updatePaintNodeData) override;
     void updatePolish() override;
+    void itemChange(ItemChange change, const ItemChangeData &value) override;
 
     friend class QQuickTextUtil;
     friend class QQuickTextDocument;

@@ -557,6 +557,10 @@ void QQuickTextEdit::setFont(const QFont &font)
     d->sourceFont = font;
     QFont oldFont = d->font;
     d->font = font;
+
+    if (!antialiasing())
+        d->font.setStyleStrategy(QFont::NoAntialias);
+
     if (d->font.pointSizeF() != -1) {
         // 0.5pt resolution
         qreal size = qRound(d->font.pointSizeF()*2.0);
@@ -2185,6 +2189,21 @@ QSGNode *QQuickTextEdit::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *
 void QQuickTextEdit::updatePolish()
 {
     invalidateFontCaches();
+}
+
+void QQuickTextEdit::itemChange(ItemChange change, const ItemChangeData &value)
+{
+    Q_D(QQuickTextEdit);
+    Q_UNUSED(value);
+    if (change == ItemAntialiasingHasChanged) {
+        if (!antialiasing())
+            d->font.setStyleStrategy(QFont::NoAntialias);
+        else
+            d->font.setStyleStrategy(QFont::PreferAntialias);
+        updateSize();
+        updateWholeDocument();
+    }
+    QQuickItem::itemChange(change, value);
 }
 
 /*!

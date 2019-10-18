@@ -383,6 +383,7 @@ protected:
     void timerEvent(QTimerEvent *event) override;
     QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *data) override;
     void updatePolish() override;
+    void itemChange(ItemChange change, const ItemChangeData &value) override;
 
 public Q_SLOTS:
     void selectAll();
