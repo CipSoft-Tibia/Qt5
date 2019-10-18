@@ -1253,13 +1253,6 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
             const QString text = uch.isNull() ? QString() : QString(uch);
             const char a = uch.row() ? char(0) : char(uch.cell());
             const Qt::KeyboardModifiers modifiers(state);
-#ifndef QT_NO_SHORTCUT
-            // Is Qt interested in the context menu key?
-            if (modifiers == Qt::SHIFT && code == Qt::Key_F10
-                && !QGuiApplicationPrivate::instance()->shortcutMap.hasShortcutForKeySequence(QKeySequence(Qt::SHIFT + Qt::Key_F10))) {
-                return false;
-            }
-#endif // !QT_NO_SHORTCUT
             key_recorder.storeKey(int(msg.wParam), a, state, text);
 
             // QTBUG-71210
