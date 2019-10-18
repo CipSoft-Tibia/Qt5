@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QPixmap>
 #include <private/qsgadaptationlayer_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -77,6 +78,8 @@ private:
     QSGGeometry m_geometry;
     QQuickText::TextStyle m_style;
     QColor m_styleColor;
+    QPixmap m_CachedPixmap;
+    bool m_Dirty;
 };
 
 QT_END_NAMESPACE
