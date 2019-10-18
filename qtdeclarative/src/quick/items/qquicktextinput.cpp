@@ -403,6 +403,10 @@ void QQuickTextInput::setFont(const QFont &font)
     d->sourceFont = font;
     QFont oldFont = d->font;
     d->font = font;
+
+    if (!antialiasing())
+        d->font.setStyleStrategy(QFont::NoAntialias);
+
     if (d->font.pointSizeF() != -1) {
         // 0.5pt resolution
         qreal size = qRound(d->font.pointSizeF()*2.0);
@@ -1792,6 +1796,16 @@ void QQuickTextInput::itemChange(ItemChange change, const ItemChangeData &value)
             d->updateLayout();
         }
         break;
+
+    case ItemAntialiasingHasChanged: {
+        if (!antialiasing())
+            d->font.setStyleStrategy(QFont::NoAntialias);
+        else
+            d->font.setStyleStrategy(QFont::PreferAntialias);
+        d->updateLayout();
+        updateCursorRectangle();
+        break;
+    }
 
     default:
         break;
