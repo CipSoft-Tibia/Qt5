@@ -73,8 +73,15 @@ BasicTableView {
 
     // Internal stuff. Do not look
 
-    onModelChanged: selection.clear()
+       onModelChanged: {
+               selection.clear()
+               currentRow = -1;
+       }
 
+       onCurrentRowChanged: {
+               if (currentRow !== -1 && selection.count === 0)
+                       selection.__selectOne(currentRow)
+       }
     __viewTypeName: "TableView"
     __model: model
 
@@ -189,8 +196,8 @@ BasicTableView {
             }
 
             if (pressed && containsMouse) {
-                pressedRow = Math.max(0, __listView.indexAt(0, mouseY + __listView.contentY))
-                pressedColumn = __listView.columnAt(mouseX)
+                pressedRow = model ? Math.max(0, __listView.indexAt(0, mouseY + __listView.contentY)) : -1
+                pressedColumn = model ? __listView.columnAt(mouseX) : -1
                 if (!Settings.hasTouchScreen) {
                     if (pressedRow >= 0 && pressedRow !== currentRow) {
                         __listView.currentIndex = pressedRow;
@@ -214,8 +221,8 @@ BasicTableView {
         }
 
         onPressed: {
-            pressedRow = __listView.indexAt(0, mouseY + __listView.contentY)
-            pressedColumn = __listView.columnAt(mouseX)
+            pressedRow = model ? __listView.indexAt(0, mouseY + __listView.contentY) : -1
+            pressedColumn = model ? __listView.columnAt(mouseX) : -1
             __listView.forceActiveFocus()
             if (pressedRow > -1 && !Settings.hasTouchScreen) {
                 __listView.currentIndex = pressedRow
