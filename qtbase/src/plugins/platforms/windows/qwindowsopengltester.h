@@ -100,6 +100,8 @@ private:
     static bool testDesktopGL();
 };
 
+extern "C" Q_DECL_EXPORT int GetSupportedRenderers(int requested);
+
 Q_DECLARE_OPERATORS_FOR_FLAGS(QWindowsOpenGLTester::Renderers)
 
 QT_END_NAMESPACE
