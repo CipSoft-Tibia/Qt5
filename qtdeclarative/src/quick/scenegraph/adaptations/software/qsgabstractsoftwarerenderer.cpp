@@ -119,84 +119,20 @@ void QSGAbstractSoftwareRenderer::buildRenderList()
 
 QRegion QSGAbstractSoftwareRenderer::optimizeRenderList()
 {
-    // Iterate through the renderlist from front to back
-    // Objective is to update the dirty status and rects.
-    for (auto i = m_renderableNodes.rbegin(); i != m_renderableNodes.rend(); ++i) {
+    // CipSoft amendment: Calculating the actual diry/obscured regions is computionally
+    // more expensive for Tibia than just rendering the full window every time.
+    m_dirtyRegion = QRegion(m_background->rect().toRect());
+
+    for (auto i = m_renderableNodes.begin(); i != m_renderableNodes.end(); ++i) {
         auto node = *i;
-        if (!m_dirtyRegion.isEmpty()) {
-            // See if the current dirty regions apply to the current node
-            node->addDirtyRegion(m_dirtyRegion, true);
-        }
-
-        if (!m_obscuredRegion.isEmpty()) {
-            // Don't try to paint things that are covered by opaque objects
-            node->subtractDirtyRegion(m_obscuredRegion);
-        }
-
-        // Keep up with obscured regions
-        if (node->isOpaque()) {
-            m_obscuredRegion += node->boundingRectMin();
-        }
-
-        if (node->isDirty()) {
-            // Don't paint things outside of the rendering area
-            if (!m_background->rect().toRect().contains(node->boundingRectMax(), /*proper*/ true)) {
-                // Some part(s) of node is(are) outside of the rendering area
-                QRegion renderArea(m_background->rect().toRect());
-                QRegion outsideRegions = node->dirtyRegion().subtracted(renderArea);
-                if (!outsideRegions.isEmpty())
-                    node->subtractDirtyRegion(outsideRegions);
-            }
-
-            // Get the dirty region's to pass to the next nodes
-            if (node->isOpaque()) {
-                // if isOpaque, subtract node's dirty rect from m_dirtyRegion
-                m_dirtyRegion -= node->boundingRectMin();
-            } else {
-                // if isAlpha, add node's dirty rect to m_dirtyRegion
-                m_dirtyRegion += node->dirtyRegion();
-            }
-            // if previousDirtyRegion has content outside of boundingRect add to m_dirtyRegion
-            QRegion prevDirty = node->previousDirtyRegion();
-            if (!prevDirty.isNull())
-                m_dirtyRegion += prevDirty;
-        }
+        // See if the current dirty regions apply to the current node
+        node->addDirtyRegion(m_dirtyRegion, true);
     }
 
-    if (m_obscuredRegion.contains(m_background->rect().toAlignedRect())) {
-        m_isOpaque = true;
-    } else {
-        m_isOpaque = false;
-    }
-
-    // Empty dirtyRegion (for second pass)
+    QRegion updatedRegion = m_dirtyRegion;
     m_dirtyRegion = QRegion();
-    m_obscuredRegion = QRegion();
-
-    // Iterate through the renderlist from back to front
-    // Objective is to make sure all non-opaque items are painted when an item under them is dirty
-    for (auto j = m_renderableNodes.begin(); j != m_renderableNodes.end(); ++j) {
-        auto node = *j;
-
-        if ((!node->isOpaque() || node->boundingRectMax() != node->boundingRectMin()) && !m_dirtyRegion.isEmpty()) {
-            // Blended nodes need to be updated
-            // QTBUG-113745: Also nodes with floating point boundary rectangles need to
-            // be updated. The reason is that m_obscuredRegion contains only the rounded
-            // down bounding rectangle (node->boundingRectMin()) and thus not the whole
-            // node. As a result up to 1 pixel would be overpainted when it should not.
-            node->addDirtyRegion(m_dirtyRegion, true);
-        }
-
-        m_dirtyRegion += node->dirtyRegion();
-    }
-
-    QRegion updateRegion = m_dirtyRegion;
-
-    // Empty dirtyRegion
-    m_dirtyRegion = QRegion();
-    m_obscuredRegion = QRegion();
-
-    return updateRegion;
+    m_obscuredRegion = m_dirtyRegion;
+    return updatedRegion;
 }
 
 void QSGAbstractSoftwareRenderer::setBackgroundColor(const QColor &color)
