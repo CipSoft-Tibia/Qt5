@@ -124,8 +124,8 @@ void QSGSoftwareGlyphNode::paint(QPainter *painter)
     if (m_Dirty) {
         constexpr int OFFSET_FOR_OUTLINE_PIXELS{2}; // Needs 1px on top/left and 1px on bottom/right for outline
         m_CachedPixmap = QPixmap{
-            static_cast<int>(m_bounding_rect.x() + m_bounding_rect.width() + OFFSET_FOR_OUTLINE_PIXELS),
-            static_cast<int>(m_bounding_rect.y() + m_bounding_rect.height() + OFFSET_FOR_OUTLINE_PIXELS)};
+            static_cast<int>(std::abs(m_bounding_rect.x()) + m_bounding_rect.width() + OFFSET_FOR_OUTLINE_PIXELS),
+            static_cast<int>(std::abs(m_bounding_rect.y()) + m_bounding_rect.height() + OFFSET_FOR_OUTLINE_PIXELS)};
         const QColor Transparent{0, 0, 0, 0};
         m_CachedPixmap.fill(Transparent);
 
