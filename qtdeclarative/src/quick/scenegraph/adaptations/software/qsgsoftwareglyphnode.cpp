@@ -77,6 +77,15 @@ void QSGSoftwareGlyphNode::setColor(const QColor &color)
 void QSGSoftwareGlyphNode::setStyle(QQuickText::TextStyle style)
 {
     m_style = style;
+
+    // Resize the bounding rectangle to allow for a 1px outline
+    if (m_style == QQuickText::Outline) {
+        m_bounding_rect.setX(m_bounding_rect.x() - 1);
+        m_bounding_rect.setY(m_bounding_rect.y() - 1);
+        m_bounding_rect.setWidth(m_bounding_rect.width() + 2);
+        m_bounding_rect.setHeight(m_bounding_rect.height() + 2);
+    }
+
     m_Dirty = true;
 }
 
@@ -101,12 +110,14 @@ void QSGSoftwareGlyphNode::update()
 
 void QSGSoftwareGlyphNode::paint(QPainter *painter)
 {
-    constexpr QPointF STARTING_POINT_IN_PIXMAP{1, 1}; // Leave a 1px top/left spacing for outline
+    constexpr QPointF OUTLINE_STARTING_POINT_IN_PIXMAP{1, 1}; // Leave a 1px top/left spacing for outline
+
     if (m_Dirty) {
-        constexpr int OFFSET_FOR_OUTLINE_PIXELS{2}; // Needs 1px on top/left and 1px on bottom/right for outline
-        m_CachedPixmap = QPixmap{
-            static_cast<int>(std::abs(m_bounding_rect.x()) + m_bounding_rect.width() + OFFSET_FOR_OUTLINE_PIXELS),
-            static_cast<int>(std::abs(m_bounding_rect.y()) + m_bounding_rect.height() + OFFSET_FOR_OUTLINE_PIXELS)};
+        const int PixmapWidth = static_cast<int>(std::abs(std::ceil(m_bounding_rect.x())) + m_bounding_rect.width());
+        // Make sure that the resulting bitmap is, at the minimum, large enough to contain the highest font symbol (via ascent)
+        const int PixmapHeight = qMax(static_cast<int>(std::abs(std::ceil(m_bounding_rect.y())) + m_bounding_rect.height()),
+                                      static_cast<int>(m_glyphRun.rawFont().ascent()));
+        m_CachedPixmap = QPixmap{PixmapWidth, PixmapHeight};
         const QColor Transparent{0, 0, 0, 0};
         m_CachedPixmap.fill(Transparent);
 
@@ -119,33 +130,28 @@ void QSGSoftwareGlyphNode::paint(QPainter *painter)
             offset = 1.0 / painter->device()->devicePixelRatio();
 
         switch (m_style) {
-        case QQuickText::Normal: break;
+        case QQuickText::Normal:
+        case QQuickText::Sunken:
+        case QQuickText::Raised:
+            // XXX: raised and sunken text aren't implemented
+            Painter.setPen(m_color);
+            Painter.drawGlyphRun(QPointF{}, m_glyphRun);
+        break;
         case QQuickText::Outline:
             Painter.setPen(m_styleColor);
-            Painter.drawGlyphRun(STARTING_POINT_IN_PIXMAP + QPointF(0, offset), m_glyphRun);
-            Painter.drawGlyphRun(STARTING_POINT_IN_PIXMAP + QPointF(0, -offset), m_glyphRun);
-            Painter.drawGlyphRun(STARTING_POINT_IN_PIXMAP + QPointF(offset, 0), m_glyphRun);
-            Painter.drawGlyphRun(STARTING_POINT_IN_PIXMAP + QPointF(-offset, 0), m_glyphRun);
-            break;
-
-        // XXX: raised and sunken text was never tested, so it might not work as expected
-        case QQuickText::Raised:
-            Painter.setPen(m_styleColor);
-            Painter.drawGlyphRun(STARTING_POINT_IN_PIXMAP + QPointF(0, offset), m_glyphRun);
-            break;
-        case QQuickText::Sunken:
-            Painter.setPen(m_styleColor);
-            Painter.drawGlyphRun(STARTING_POINT_IN_PIXMAP + QPointF(0, -offset), m_glyphRun);
+            Painter.drawGlyphRun(OUTLINE_STARTING_POINT_IN_PIXMAP + QPointF(0, offset), m_glyphRun);
+            Painter.drawGlyphRun(OUTLINE_STARTING_POINT_IN_PIXMAP + QPointF(0, -offset), m_glyphRun);
+            Painter.drawGlyphRun(OUTLINE_STARTING_POINT_IN_PIXMAP + QPointF(offset, 0), m_glyphRun);
+            Painter.drawGlyphRun(OUTLINE_STARTING_POINT_IN_PIXMAP + QPointF(-offset, 0), m_glyphRun);
+            Painter.setPen(m_color);
+            Painter.drawGlyphRun(OUTLINE_STARTING_POINT_IN_PIXMAP, m_glyphRun);
             break;
         }
-
-        Painter.setPen(m_color);
-        Painter.drawGlyphRun(STARTING_POINT_IN_PIXMAP, m_glyphRun);
 
         m_Dirty = false;
     }
 
-    QPointF AbsolutePos = m_position - QPointF(0, m_glyphRun.rawFont().ascent()) - STARTING_POINT_IN_PIXMAP;
+    QPointF AbsolutePos = m_position - QPointF(0, m_glyphRun.rawFont().ascent()) - (m_style == QQuickText::Outline ? OUTLINE_STARTING_POINT_IN_PIXMAP : QPointF{});
     painter->drawPixmap(AbsolutePos, m_CachedPixmap);
 }
 
