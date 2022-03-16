@@ -44,6 +44,8 @@
 #include <QtCore/qfloat16.h>
 #include <QtCore/qglobal.h>
 
+#include <limits>
+
 // include stdlib.h and hope that it defines __GLIBC__ for glibc-based systems
 #include <stdlib.h>
 #include <string.h>
