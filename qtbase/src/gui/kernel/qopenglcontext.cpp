@@ -1023,8 +1023,7 @@ bool QOpenGLContext::makeCurrent(QSurface *surface)
                         || qstrcmp(rendererString, "GC800 core") == 0
                         || qstrcmp(rendererString, "GC1000 core") == 0
                         || strstr(rendererString, "GC2000") != 0
-                        || qstrcmp(rendererString, "Immersion.16") == 0
-                        || qstrncmp(rendererString, "Apple Mx", 7) == 0;
+                        || qstrcmp(rendererString, "Immersion.16") == 0;
         }
         needsWorkaroundSet = true;
     }
