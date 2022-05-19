@@ -702,9 +702,8 @@ bool QOpenGLContext::makeCurrent(QSurface *surface)
                         || qstrncmp(rendererString, "Adreno 6xx", 8) == 0 // Same as above but without the '(TM)'
                         || qstrcmp(rendererString, "GC800 core") == 0
                         || qstrcmp(rendererString, "GC1000 core") == 0
-                        || strstr(rendererString, "GC2000") != nullptr
-                        || qstrcmp(rendererString, "Immersion.16") == 0
-                        || qstrncmp(rendererString, "Apple Mx", 7) == 0;
+                        || strstr(rendererString, "GC2000") != 0
+                        || qstrcmp(rendererString, "Immersion.16") == 0;
         }
         needsWorkaroundSet = true;
     }
