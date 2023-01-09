@@ -102,7 +102,8 @@ void qAccessibleNotifyActivationObservers(bool active); // qaccessible.cpp
 
 void QPlatformAccessibility::setActive(bool active)
 {
-    m_active = active;
+    // Prevent Qt Accessibility features from ever being activated
+    m_active = false;
 
     // Send activeChanged notifications if the new active status differs from
     // the notifed one.
