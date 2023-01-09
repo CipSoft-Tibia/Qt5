@@ -101,8 +101,9 @@ void QPlatformAccessibility::cleanup()
 
 void QPlatformAccessibility::setActive(bool active)
 {
-    m_active = active;
-    QAccessible::setActive(active);
+    // Prevent Qt Accessibility features from ever being activated
+    m_active = false;
+    QAccessible::setActive(m_active);
 }
 
 #endif // QT_CONFIG(accessibility)
