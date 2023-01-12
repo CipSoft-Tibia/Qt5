@@ -324,7 +324,13 @@ void qt_blend_rgb32_on_rgb32_avx2(uchar *destPixels, int dbpl,
 }
 
 static Q_NEVER_INLINE
-void Q_DECL_VECTORCALL qt_memfillXX_avx2(uchar *dest, __m256i value256, qsizetype bytes)
+void
+#if defined(Q_PROCESSOR_X86_32) && defined(Q_CC_MSVC) && !defined(Q_CC_CLANG)
+// Omit vectorcall convention with MSVC/x86 to work around vzeroupper bug
+#else
+Q_DECL_VECTORCALL
+#endif
+qt_memfillXX_avx2(uchar *dest, __m256i value256, qsizetype bytes)
 {
     __m128i value128 = _mm256_castsi256_si128(value256);
 
