@@ -17,7 +17,7 @@ CFLAGS_EXTRA      = /Zc:forScope /Qstd=c++11
 !elseif "$(QMAKESPEC)" == "win32-clang-msvc"
 CXX               = clang-cl
 LINKER            = lld-link
-CFLAGS_EXTRA      = -fms-compatibility-version=19.00.23506 -Wno-microsoft-enum-value
+CFLAGS_EXTRA      = -m32 -fms-compatibility-version=19.00.23506 -Wno-microsoft-enum-value
 !else
 CXX               = cl
 LINKER            = link
